@@ -1,13 +1,11 @@
-# app.py
 import streamlit as st
 import networkx as nx
 import plotly.graph_objects as go
+import math
 
-# Fonction pour créer le graphe interactif avec descriptions et couleurs
 def create_interactive_graph():
     G = nx.DiGraph()
 
-    # Nœuds principaux avec des descriptions et couleurs
     nodes = {
         "Président\nTrésorier\nSecrétaire": ("Équipe dirigeante principale : coordination des rôles.", "pink"),
         "Tutorat": ("Tutorat pour les étudiants : encadrement des études.", "orange"),
@@ -20,8 +18,17 @@ def create_interactive_graph():
         "VP Repro": ("Gestion de la reproduction des supports pédagogiques.", "cyan"),
     }
 
-    # Sous-nœuds avec des descriptions et couleurs
     subnodes = {
+        "Président\nTrésorier\nSecrétaire": {
+            "Tutorat": ("Le tutorat pour tous !", "orange"),
+            "Comm": ("La communication avant tout", "skyblue"),
+            "Relations\nextérieures": ("blablabla", "lightgreen"),
+            "Echanges": ("blablabla", "gold"),
+            "Animation": ("blablabla", "purple"),
+            "SSEB": ("blablabla", "red"),
+            "VP Etudes méd": ("blablabla", "teal"),
+            "VP Repro": ("blablabla", "cyan"),
+        },
         "Tutorat": {
             "CM tut inf": ("Tutorat pour les infirmiers.", "orange"),
             "CM tut LR": ("Tutorat pour la licence de santé.", "orange"),
@@ -55,11 +62,8 @@ def create_interactive_graph():
         },
     }
 
-    # Ajout des nœuds principaux avec leurs couleurs
     for node, (desc, color) in nodes.items():
         G.add_node(node, description=desc, color=color)
-
-    # Ajout des sous-nœuds avec leurs couleurs et liens
     for parent, children in subnodes.items():
         for child, (desc, color) in children.items():
             G.add_node(child, description=desc, color=color)
@@ -67,84 +71,56 @@ def create_interactive_graph():
 
     return G
 
-# Fonction pour tracer un graphe interactif avec Plotly
-def plot_interactive_graph(G):
-    # Positionnement des nœuds
-    pos = nx.spring_layout(G, seed=42)
+def arrange_nodes_compact(G, center_node, min_distance=0):
+    positions = {}
+    positions[center_node] = (0, 0) 
 
-    # Extraire les données pour Plotly
+    def position_children(node, radius):
+        children = list(G.successors(node))
+        if not children:
+            return
+
+        child_count = len(children)
+        angle_step = 2 * math.pi / child_count
+        effective_radius = max(radius, min_distance * child_count / (2 * math.pi))
+
+        for i, child in enumerate(children):
+            angle = i * angle_step
+            x = positions[node][0] + effective_radius * math.cos(angle)
+            y = positions[node][1] + effective_radius * math.sin(angle)
+            positions[child] = (x, y)
+            position_children(child, effective_radius)
+
+    position_children(center_node, 0.1)
+    return positions
+
+def plot_interactive_graph(G, pos):
     x_nodes = [pos[node][0] for node in G.nodes]
     y_nodes = [pos[node][1] for node in G.nodes]
-    node_text = [node for node in G.nodes]  # Texte des bulles
     node_colors = [G.nodes[node].get("color", "grey") for node in G.nodes]
+    node_text = list(G.nodes)
 
-    edge_x = []
-    edge_y = []
-
+    edge_x, edge_y = [], []
     for edge in G.edges:
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
-        edge_x.append(x0)
-        edge_x.append(x1)
-        edge_x.append(None)
-        edge_y.append(y0)
-        edge_y.append(y1)
-        edge_y.append(None)
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
 
-    # Tracer les arêtes
-    edge_trace = go.Scatter(
-        x=edge_x,
-        y=edge_y,
-        line=dict(width=1, color="#888"),
-        hoverinfo="none",
-        mode="lines",
-    )
-
-    # Tracer les nœuds avec texte à l'intérieur des bulles
+    edge_trace = go.Scatter(x=edge_x, y=edge_y, mode="lines", line=dict(width=1, color="#888"), hoverinfo="none")
     node_trace = go.Scatter(
         x=x_nodes,
         y=y_nodes,
         mode="markers+text",
-        hoverinfo="text",
-        text=node_text,  # Texte affiché à l'intérieur des bulles
-        marker=dict(
-            size=40,  # Taille des bulles
-            color=node_colors,  # Couleurs dynamiques
-            line_width=2,
-        ),
-        textfont=dict(
-            size=12,  # Taille du texte à l'intérieur
-            color="black"  # Couleur du texte
-        ),
-        textposition="middle center",  # Texte centré dans la bulle
+        marker=dict(size=50, color=node_colors, line_width=2),
+        text=node_text,
+        textposition="middle center",
     )
 
-    # Créer la figure Plotly
-    fig = go.Figure(data=[edge_trace, node_trace],
-                    layout=go.Layout(
-                        title="Organigramme interactif avec texte dans les bulles",
-                        titlefont_size=16,
-                        showlegend=False,
-                        hovermode="closest",
-                        margin=dict(b=0, l=0, r=0, t=40),
-                        xaxis=dict(showgrid=False, zeroline=False),
-                        yaxis=dict(showgrid=False, zeroline=False),
-                    ))
-    return fig
+    return go.Figure(data=[edge_trace, node_trace], layout=go.Layout(showlegend=False, hovermode="closest"))
 
-# Application Streamlit
-st.title("Organigramme interactif avec texte dans les bulles")
-st.write("Cliquez sur les bulles pour voir des détails.")
-
-# Création et affichage du graphe
+st.title("Organigramme compact avec positionnement optimal")
 graph = create_interactive_graph()
-fig = plot_interactive_graph(graph)
+positions = arrange_nodes_compact(graph, "Président\nTrésorier\nSecrétaire")
+fig = plot_interactive_graph(graph, positions)
 st.plotly_chart(fig, use_container_width=True)
-
-# Ajouter une section pour les détails d'un nœud sélectionné
-st.sidebar.title("Détails du nœud")
-clicked_node = st.sidebar.text_input("Entrez un nœud pour afficher les détails")
-if clicked_node in graph.nodes:
-    st.sidebar.write("**Description :**", graph.nodes[clicked_node].get("description", "Aucune description disponible."))
-else:
-    st.sidebar.write("Sélectionnez un nœud valide.")
